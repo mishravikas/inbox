@@ -13,7 +13,7 @@
 
 "CACHE_BASEDIR" : "/var/lib/inboxapp/cache",
 "LOGDIR": "/var/log/inboxapp",
-"LOGLEVEL": 10,
+"LOGLEVEL": 50,
 
 "GOOGLE_OAUTH_CLIENT_ID": "986659776516-fg79mqbkbktf5ku10c215vdij918ra0a.apps.googleusercontent.com",
 "GOOGLE_OAUTH_CLIENT_SECRET": "zgY9wgwML0kmQ6mmYHYJE05d",

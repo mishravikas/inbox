@@ -54,6 +54,7 @@ from inbox.mailsync.backends.imap import (account, uidvalidity_cb,
                                           uid_list_to_stack, report_progress,
                                           ImapSyncMonitor, update_uid_counts)
 
+from inbox.util.debug import profile
 
 PROVIDER = 'gmail'
 SYNC_MONITOR_CLS = 'GmailSyncMonitor'
@@ -482,6 +483,7 @@ def deduplicate_message_download(crispin_client, log, syncmanager_lock,
     return full_download
 
 
+@profile
 def add_new_imapuid(db_session, log, gmessage, folder_name, acc):
     """
     Add ImapUid object for this GMessage if we don't already have one.
@@ -660,6 +662,7 @@ def update_saved_g_metadata(crispin_client, log, folder_name,
         return 0
 
 
+@profile
 def create_gmail_message(db_session, log, acct, folder, msg):
     """ Gmail-specific message creation logic. """
 
@@ -672,6 +675,7 @@ def create_gmail_message(db_session, log, acct, folder, msg):
     return new_uid
 
 
+@profile
 def add_gmail_attrs(db_session, log, new_uid, flags, folder, g_thrid, g_msgid,
                     g_labels, created):
     """ Gmail-specific post-create-message bits. """
