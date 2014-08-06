@@ -54,7 +54,7 @@ from inbox.mailsync.backends.imap import (account, uidvalidity_cb,
                                           uid_list_to_stack, report_progress,
                                           ImapSyncMonitor, update_uid_counts)
 
-from inbox.util.debug import profile
+#from inbox.util.debug import profile
 
 PROVIDER = 'gmail'
 SYNC_MONITOR_CLS = 'GmailSyncMonitor'
@@ -483,7 +483,7 @@ def deduplicate_message_download(crispin_client, log, syncmanager_lock,
     return full_download
 
 
-@profile
+#@profile
 def add_new_imapuid(db_session, log, gmessage, folder_name, acc):
     """
     Add ImapUid object for this GMessage if we don't already have one.
@@ -662,10 +662,9 @@ def update_saved_g_metadata(crispin_client, log, folder_name,
         return 0
 
 
-@profile
+#@profile
 def create_gmail_message(db_session, log, acct, folder, msg):
     """ Gmail-specific message creation logic. """
-
     new_uid = account.create_imap_message(db_session, log, acct, folder, msg)
 
     new_uid = add_gmail_attrs(db_session, log, new_uid, msg.flags, folder,
@@ -675,7 +674,7 @@ def create_gmail_message(db_session, log, acct, folder, msg):
     return new_uid
 
 
-@profile
+#@profile
 def add_gmail_attrs(db_session, log, new_uid, flags, folder, g_thrid, g_msgid,
                     g_labels, created):
     """ Gmail-specific post-create-message bits. """
@@ -697,7 +696,6 @@ def add_gmail_attrs(db_session, log, new_uid, flags, folder, g_thrid, g_msgid,
         # make sure this thread has all the correct labels
         new_labels = account.update_thread_labels(thread, folder.name,
                                                   g_labels, db_session)
-
         # Reconciliation for Drafts, Sent Mail folders:
         if (('draft' in new_labels or 'sent' in new_labels) and not
                 created and new_uid.message.inbox_uid):

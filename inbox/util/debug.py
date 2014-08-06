@@ -3,6 +3,7 @@ from functools import wraps
 import pdb
 from inbox.log import log_uncaught_errors
 from pyinstrument import Profiler
+import cProfile, pstats, StringIO
 import signal
 
 
@@ -36,10 +37,30 @@ def profile(func):
         r = func(*args, **kwargs)
         profiler.stop()
 
-        #print profiler.output_text(color=True)
-
-        with open('perf.out', 'a+') as f:
+        filename = 'message.out'
+        with open(filename, 'a+') as f:
             f.write(profiler.output_text(color=True))
+        return r
+    return wrapper
+
+
+def cprofile(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        pr = cProfile.Profile()
+
+        pr.enable()
+        r = func(*args, **kwargs)
+        pr.disable()
+
+        filename = 'cmessage.out'
+        s = StringIO.StringIO()
+        sortby = 'cumulative'
+        ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+        ps.dump_stats(filename)
+
+        print s.getvalue()
+
         return r
     return wrapper
 

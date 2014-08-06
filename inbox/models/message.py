@@ -27,6 +27,8 @@ from inbox.models.base import MailSyncBase
 from inbox.log import get_logger
 log = get_logger()
 
+from inbox.util.debug import profile
+
 
 def _trim_filename(s, account_id, mid, max_len=64):
     if s and len(s) > max_len:
@@ -137,6 +139,7 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
     def namespace(self):
         return self.thread.namespace
 
+    #@profile
     def __init__(self, account=None, mid=None, folder_name=None,
                  received_date=None, flags=None, body_string=None,
                  *args, **kwargs):
@@ -317,6 +320,7 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
         if self.snippet is None:
             self.snippet = ''
 
+    #@profile
     def calculate_sanitized_body(self):
         plain_part, html_part = self.body
         # TODO: also strip signatures.
