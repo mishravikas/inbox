@@ -3,7 +3,7 @@ from functools import wraps
 import pdb
 from inbox.log import log_uncaught_errors
 from pyinstrument import Profiler
-import cProfile, pstats, StringIO
+import cProfile, pstats, gc, time
 import signal
 
 
@@ -44,25 +44,28 @@ def profile(func):
     return wrapper
 
 
-def cprofile(func):
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        pr = cProfile.Profile()
-
-        pr.enable()
-        r = func(*args, **kwargs)
-        pr.disable()
-
-        filename = 'cmessage.out'
-        s = StringIO.StringIO()
-        sortby = 'cumulative'
-        ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
-        ps.dump_stats(filename)
-
-        print s.getvalue()
-
-        return r
+def cprofile(fn):
+    def wrapper(*args, **kw):
+        elapsed, stat_loader, result = _profile('cmessage.txt', fn, *args, **kw)
+        stats = stat_loader()
+        stats.sort_stats('cumulative')
+        stats.print_stats()
+        # Uncomment this to see who's calling what
+        # stats.print_callers()
+        return result
     return wrapper
+
+
+def _profile(filename, fn, *args, **kw):
+    load_stats = lambda: pstats.Stats(filename)
+    gc.collect()
+
+    began = time.time()
+    cProfile.runctx('result = fn(*args, **kw)', globals(), locals(),
+                    filename=filename)
+    ended = time.time()
+
+    return ended - began, load_stats, locals()['result']
 
 
 def attach_profiler():

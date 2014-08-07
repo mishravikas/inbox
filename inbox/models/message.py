@@ -27,7 +27,7 @@ from inbox.models.base import MailSyncBase
 from inbox.log import get_logger
 log = get_logger()
 
-from inbox.util.debug import profile
+from inbox.util.debug import profile, cprofile
 
 
 def _trim_filename(s, account_id, mid, max_len=64):
@@ -139,7 +139,7 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
     def namespace(self):
         return self.thread.namespace
 
-    #@profile
+    @cprofile
     def __init__(self, account=None, mid=None, folder_name=None,
                  received_date=None, flags=None, body_string=None,
                  *args, **kwargs):

@@ -60,7 +60,6 @@ class SyncService(Process):
             # stdout by doing kill -SIGTRAP <sync_process>.
             # This slows things down so you probably don't want to do it
             # normally.
-            print '\nATTACHING PROFILER'
             attach_profiler()
         setproctitle('inbox-sync-{}'.format(self.cpu_id))
         retry_with_logging(self._run_impl, self.log)
