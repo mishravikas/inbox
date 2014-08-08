@@ -227,8 +227,7 @@ class TagItem(MailSyncBase):
                         collection_class=set,
                         cascade='all, delete-orphan',
                         primaryjoin='and_(TagItem.thread_id==Thread.id, '
-                                    'TagItem.deleted_at.is_(None))',
-                        info={'versioned_properties': ['tag_id']}),
+                                    'TagItem.deleted_at.is_(None))'),
         primaryjoin='and_(TagItem.thread_id==Thread.id, '
         'Thread.deleted_at.is_(None))')
     tag = relationship(

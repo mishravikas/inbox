@@ -66,8 +66,7 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
                         primaryjoin='and_('
                         'Message.thread_id == Thread.id, '
                         'Message.deleted_at.is_(None))',
-                        order_by='Message.received_date',
-                        info={'versioned_properties': ['id']}))
+                        order_by='Message.received_date'))
 
     from_addr = Column(JSON, nullable=False, default=lambda: [])
     sender_addr = Column(JSON, nullable=True)

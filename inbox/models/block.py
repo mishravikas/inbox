@@ -4,8 +4,6 @@ from sqlalchemy.orm import reconstructor, relationship, backref
 from sqlalchemy.schema import UniqueConstraint
 from sqlalchemy.sql.expression import false
 
-from inbox.sqlalchemy_ext.util import JSON
-
 from inbox.models.roles import Blob
 from inbox.models.mixins import HasPublicID
 from inbox.models.transaction import HasRevisions
@@ -118,3 +116,6 @@ class Part(Block):
     def is_embedded(self):
         return (self.content_disposition is not None and
                 self.content_disposition.lower() == 'inline')
+
+    def should_record(self):
+        return self.is_attachment

@@ -7,36 +7,15 @@ from inbox.models import Transaction
 from inbox.sqlalchemy_ext.util import safer_yield_per
 
 
-def dict_delta(current_dict, previous_dict):
-    """Return a dictionary consisting of the key-value pairs in
-    current_dict that differ from those in previous_dict."""
-    return {k: v for k, v in current_dict.iteritems() if k not in previous_dict
-            or previous_dict[k] != v}
-
-
 def should_publish_transaction(transaction, db_session):
     """Returns True if the given transaction should actually be published by
     the client sync API."""
     if transaction.object_public_id is None:
         return False
     if 'object' not in transaction.public_snapshot:
+        # STOPSHIP(emfree) why is this here again?
         return False
-    if transaction.command == 'update':
-        # Don't publish transactions if they don't result in publicly-visible
-        # changes.
-        prev_revision = db_session.query(Transaction). \
-            filter(Transaction.table_name == transaction.table_name,
-                   Transaction.record_id == transaction.record_id,
-                   Transaction.namespace_id == transaction.namespace_id,
-                   Transaction.id < transaction.id). \
-            order_by(desc(Transaction.id)).first()
-
-        if (prev_revision is not None and prev_revision.public_snapshot is not
-                None):
-            public_delta = dict_delta(transaction.public_snapshot,
-                                      prev_revision.public_snapshot)
-            if not public_delta:
-                return False
+    # STOPSHIP(emfree): do this filtering *before* writing the log
     if (transaction.public_snapshot.get('object') == 'file' and
             transaction.public_snapshot.get('filename') is None):
         # Don't publish transactions on Parts/Blocks if they're really just raw
@@ -51,6 +30,7 @@ def create_event(transaction):
     no changes to expose."""
     result = {}
 
+    # STOPSHIP(emfree): don't use the object_public_id here.
     result['id'] = transaction.object_public_id
     result['object_type'] = transaction.public_snapshot.get('object')
 

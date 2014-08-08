@@ -14,8 +14,6 @@ from inbox.ignition import main_engine
 from inbox.log import get_logger
 log = get_logger()
 
-from inbox.sqlalchemy_ext.revision import versioned_session
-
 
 class IgnoreSoftDeletesOption(MapperOption):
     """
@@ -90,18 +88,23 @@ class InboxSession(object):
         if ignore_soft_deletes:
             args['query_cls'] = InboxQuery
         sqlalchemy_session = Session(**args)
+
         if versioned:
-            from inbox.models import Transaction
-            from inbox.models.transaction import HasRevisions
-            self._session = versioned_session(
-                sqlalchemy_session, Transaction, HasRevisions)
+            from inbox.models.transaction import (versioned_session,
+                                                  RevisionMaker)
+            revision_maker = RevisionMaker(namespace)
+            self._session = versioned_session(sqlalchemy_session,
+                                              revision_maker)
         else:
             self._session = sqlalchemy_session
 
-        self.bound_context = {}
         if namespace is not None:
             assert instance_state(namespace).detached
             self.namespace = self._session.merge(namespace, load=False)
+            # Also bind to sqlalchemy session so that after_flush handler can
+            # use it.
+            self._session.namespace = self.namespace
+
 
     def query(self, *args, **kwargs):
         q = self._session.query(*args, **kwargs)
