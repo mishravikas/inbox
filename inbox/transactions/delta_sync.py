@@ -7,65 +7,24 @@ from inbox.models import Transaction
 from inbox.sqlalchemy_ext.util import safer_yield_per
 
 
-def dict_delta(current_dict, previous_dict):
-    """Return a dictionary consisting of the key-value pairs in
-    current_dict that differ from those in previous_dict."""
-    return {k: v for k, v in current_dict.iteritems() if k not in previous_dict
-            or previous_dict[k] != v}
-
-
-def should_publish_transaction(transaction, db_session):
-    """Returns True if the given transaction should actually be published by
-    the client sync API."""
-    if transaction.object_public_id is None:
-        return False
-    if 'object' not in transaction.public_snapshot:
-        return False
-    if transaction.command == 'update':
-        # Don't publish transactions if they don't result in publicly-visible
-        # changes.
-        prev_revision = db_session.query(Transaction). \
-            filter(Transaction.table_name == transaction.table_name,
-                   Transaction.record_id == transaction.record_id,
-                   Transaction.namespace_id == transaction.namespace_id,
-                   Transaction.id < transaction.id). \
-            order_by(desc(Transaction.id)).first()
-
-        if (prev_revision is not None and prev_revision.public_snapshot is not
-                None):
-            public_delta = dict_delta(transaction.public_snapshot,
-                                      prev_revision.public_snapshot)
-            if not public_delta:
-                return False
-    if (transaction.public_snapshot.get('object') == 'file' and
-            transaction.public_snapshot.get('filename') is None):
-        # Don't publish transactions on Parts/Blocks if they're really just raw
-        # message parts.
-        return False
-    return True
-
-
 def create_event(transaction):
     """Returns a dictionary representing the JSON object that should be
     returned to the client for this transaction, or returns None if there are
     no changes to expose."""
     result = {}
 
-    result['id'] = transaction.object_public_id
-    result['object_type'] = transaction.public_snapshot.get('object')
+    # STOPSHIP(emfree): don't use the object_public_id here.
+    result['id'] = transaction.snapshot['id']
+    result['object_type'] = transaction.snapshot['object']
 
     if transaction.command == 'delete':
         result['event'] = 'delete'
-    elif (transaction.delta is not None and transaction.delta.get('deleted_at')
-          is not None):
-        # Object was soft-deleted
-        result['event'] = 'delete'
     elif transaction.command == 'insert':
         result['event'] = 'create'
-        result['attributes'] = transaction.public_snapshot
+        result['attributes'] = transaction.snapshot
     elif transaction.command == 'update':
         result['event'] = 'update'
-        result['attributes'] = transaction.public_snapshot
+        result['attributes'] = transaction.snapshot
 
     return result
 
@@ -156,13 +115,11 @@ def get_entries_from_public_id(namespace_id, cursor_start, db_session,
     for transaction in safer_yield_per(query, Transaction.id,
                                        internal_start_id + 1,
                                        result_limit):
-
-        if should_publish_transaction(transaction, db_session):
-            event = create_event(transaction)
-            deltas.append(event)
-            cursor_end = transaction.public_id
-            if len(deltas) == result_limit:
-                break
+        event = create_event(transaction)
+        deltas.append(event)
+        cursor_end = transaction.public_id
+        if len(deltas) == result_limit:
+            break
 
     result = {
         'cursor_start': cursor_start,

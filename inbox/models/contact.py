@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Enum, ForeignKey, Text
+from sqlalchemy import Column, Integer, String, Enum, ForeignKey, Text, inspect
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy.schema import UniqueConstraint
 
@@ -69,6 +69,17 @@ class Contact(MailSyncBase, HasRevisions, HasPublicID, HasEmailAddress):
         self.email_address = src.email_address
         self.provider_name = src.provider_name
         self.raw_data = src.raw_data
+
+    def should_create_revision(self):
+        """This is an optimization for mailsync: a Contact instance will show
+        up as dirty every time you associate it to a message. But we only want
+        to create a revision if the data we expose through the API has
+        changed."""
+        obj_state = inspect(self)
+        if not (obj_state.attrs.name.history.has_changes()
+                or obj_state.attrs._raw_address.history.has_changes()):
+            return False
+        return True
 
 
 class MessageContactAssociation(MailSyncBase):

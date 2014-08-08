@@ -1,12 +1,11 @@
 import pytest
-import calendar
 
 from sqlalchemy import desc
 
 from tests.util.base import config, api_client
 config()
 
-from inbox.models import (Lens, Transaction, Message)
+from inbox.models import Lens, Transaction
 
 NAMESPACE_ID = 1
 
@@ -22,10 +21,6 @@ def test_lens_tx(api_client, db):
         filter(Transaction.table_name == 'message'). \
         order_by(desc(Transaction.id)).first()
 
-    draft = db.session.query(Message).filter(Message.is_draft).\
-        order_by(desc(Message.id)).first()
-    thread = draft.thread
-
     filter = Lens(subject='/Calaveras/')
     assert filter.match(transaction)
 
@@ -40,27 +35,6 @@ def test_lens_tx(api_client, db):
 
     filter = Lens(cc_addr='/Another/')
     assert filter.match(transaction)
-
-    early_ts = calendar.timegm(thread.subjectdate.utctimetuple()) - 1
-    late_ts = calendar.timegm(thread.subjectdate.utctimetuple()) + 1
-
-    filter = Lens(started_before=late_ts)
-    assert filter.match(transaction)
-
-    filter = Lens(started_before=early_ts)
-    assert not filter.match(transaction)
-
-    filter = Lens(started_after=late_ts)
-    assert not filter.match(transaction)
-
-    filter = Lens(started_after=early_ts)
-    assert filter.match(transaction)
-
-    filter = Lens(last_message_after=early_ts)
-    assert filter.match(transaction)
-
-    filter = Lens(last_message_after=late_ts)
-    assert not filter.match(transaction)
 
     filter = Lens(subject='/Calaveras/', any_email='Nobody')
     assert not filter.match(transaction)

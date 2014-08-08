@@ -2,6 +2,7 @@ import sys
 import time
 from contextlib import contextmanager
 
+from sqlalchemy import event
 from sqlalchemy.orm.session import Session
 from sqlalchemy.orm.interfaces import MapperOption
 from sqlalchemy.orm.exc import NoResultFound
@@ -12,8 +13,6 @@ from inbox.config import config
 from inbox.ignition import main_engine
 from inbox.log import get_logger
 log = get_logger()
-
-from inbox.sqlalchemy_ext.revision import versioned_session
 
 
 class IgnoreSoftDeletesOption(MapperOption):
@@ -79,11 +78,12 @@ class InboxSession(object):
         Do you want to enable the transaction log?
     ignore_soft_deletes : bool
         Whether or not to ignore soft-deleted objects in query results.
-    namespace_id : int
-        Namespace to limit query results with.
+    namespace : *expunged* Namespace instance, optional
+        If given, assume that all objects being operated on are local to that
+        namespace when constructing revisions. Not for general use.
     """
     def __init__(self, engine, versioned=True, ignore_soft_deletes=True,
-                 namespace_id=None):
+                 namespace=None):
         # TODO: support limiting on namespaces
         assert engine, "Must set the database engine"
 
@@ -91,14 +91,19 @@ class InboxSession(object):
         self.ignore_soft_deletes = ignore_soft_deletes
         if ignore_soft_deletes:
             args['query_cls'] = InboxQuery
-        sqlalchemy_session = Session(**args)
+        self._session = Session(**args)
+
         if versioned:
-            from inbox.models import Transaction
-            from inbox.models.transaction import HasRevisions
-            self._session = versioned_session(
-                sqlalchemy_session, Transaction, HasRevisions)
-        else:
-            self._session = sqlalchemy_session
+            from inbox.models.transaction import RevisionMaker
+            self.revision_maker = RevisionMaker(namespace)
+
+            @event.listens_for(self._session, 'after_flush')
+            def after_flush(session, flush_context):
+                """
+                Hook to log revision snapshots. Must be post-flush in order to
+                grab object IDs on new objects.
+                """
+                self.revision_maker.create_revisions(session)
 
     def query(self, *args, **kwargs):
         q = self._session.query(*args, **kwargs)
@@ -155,7 +160,7 @@ cached_engine = None
 
 
 @contextmanager
-def session_scope(versioned=True, ignore_soft_deletes=True, namespace_id=None):
+def session_scope(versioned=True, ignore_soft_deletes=True, namespace=None):
     """ Provide a transactional scope around a series of operations.
 
     Takes care of rolling back failed transactions and closing the session
@@ -172,8 +177,9 @@ def session_scope(versioned=True, ignore_soft_deletes=True, namespace_id=None):
         Do you want to enable the transaction log?
     ignore_soft_deletes : bool
         Whether or not to ignore soft-deleted objects in query results.
-    namespace_id : int
-        Namespace to limit query results with.
+    namespace : *expunged* Namespace instance, optional
+        If given, assume that all objects being operated on are local to that
+        namespace when constructing revisions. Not for general use.
 
     Yields
     ------
@@ -190,7 +196,7 @@ def session_scope(versioned=True, ignore_soft_deletes=True, namespace_id=None):
     session = InboxSession(cached_engine,
                            versioned=versioned,
                            ignore_soft_deletes=ignore_soft_deletes,
-                           namespace_id=namespace_id)
+                           namespace=namespace)
     try:
         if config.get('LOG_DB_SESSIONS'):
             start_time = time.time()

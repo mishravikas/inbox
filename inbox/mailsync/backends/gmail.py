@@ -343,7 +343,7 @@ class GmailFolderSyncEngine(CondstoreFolderSyncEngine):
             # there is the possibility that another green thread has already
             # downloaded some message(s) from this batch... check within the
             # lock
-            with mailsync_session_scope() as db_session:
+            with mailsync_session_scope(self.namespace) as db_session:
                 raw_messages = self.__deduplicate_message_object_creation(
                     db_session, raw_messages)
                 if not raw_messages:
