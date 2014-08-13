@@ -40,13 +40,15 @@ def profile(func):
         filename = 'message.out'
         with open(filename, 'a+') as f:
             f.write(profiler.output_text(color=True))
+
         return r
     return wrapper
 
 
 def cprofile(fn):
     def wrapper(*args, **kw):
-        elapsed, stat_loader, result = _profile('cmessage.txt', fn, *args, **kw)
+        elapsed, stat_loader, result = _profile('cmessage.txt', fn,
+                                                *args, **kw)
         stats = stat_loader()
         stats.sort_stats('cumulative')
         stats.print_stats()

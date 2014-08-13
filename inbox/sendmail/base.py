@@ -99,7 +99,7 @@ def update_draft(db_session, account, parent_draft, to=None, subject=None,
     cc_addr = _parse_recipients(cc) if cc else parent_draft.cc_addr
     bcc_addr = _parse_recipients(bcc) if bcc else parent_draft.bcc_addr
     subject = subject or parent_draft.subject
-    body = body or parent_draft.sanitized_body
+    body = body or parent_draft.get_sanitized_body()
     blocks = blocks or [p for p in parent_draft.parts if p.is_attachment]
 
     new_draft = create_and_save_draft(db_session, account, to_addr, subject,
@@ -178,6 +178,7 @@ def create_and_save_draft(db_session, account, to_addr=None, subject=None,
         message.parent_draft_id = parent_draft.id
     message.subject = subject
     message.sanitized_body = body
+    message.parsed = True
     message.to_addr = to_addr
     message.cc_addr = cc_addr
     message.bcc_addr = bcc_addr

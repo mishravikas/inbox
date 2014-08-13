@@ -113,7 +113,7 @@ def save_draft(account_id, message_id, db_session):
     attachments = generate_attachments(message.attachments)
     mimemsg = create_email(account.sender_name, account.email_address,
                            message.inbox_uid, recipients, message.subject,
-                           message.sanitized_body, attachments)
+                           message.get_sanitized_body(), attachments)
 
     remote_save_draft = module_registry[account.provider].remote_save_draft
     remote_save_draft(account, account.drafts_folder.name,

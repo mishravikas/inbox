@@ -66,7 +66,7 @@ def encode(obj, namespace_public_id=None):
             'bcc': format_address_list(obj.bcc_addr),
             'date': obj.received_date,
             'thread': obj.thread.public_id,
-            'body': obj.sanitized_body,
+            'body': obj.get_sanitized_body(),
             'unread': not obj.is_read,
             'files': [{
                 'content_type': p.content_type,

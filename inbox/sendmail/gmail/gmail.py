@@ -21,7 +21,7 @@ class GmailSMTPClient(SMTPClient):
         """
         inbox_uid = draft.inbox_uid
         subject = draft.subject
-        body = draft.sanitized_body
+        body = draft.get_sanitized_body()
         attachments = generate_attachments(draft.attachments)
 
         smtpmsg = create_gmail_email(self.sender_name, self.email_address,
@@ -37,7 +37,7 @@ class GmailSMTPClient(SMTPClient):
         """
         inbox_uid = draft.inbox_uid
         subject = draft.subject
-        body = draft.sanitized_body
+        body = draft.get_sanitized_body()
         attachments = generate_attachments(draft.attachments)
 
         smtpmsg = create_gmail_reply(self.sender_name, self.email_address,

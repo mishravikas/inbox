@@ -22,12 +22,8 @@ from inbox.util.misc import parse_references, get_internaldate
 from inbox.models.mixins import HasPublicID
 from inbox.models.transaction import HasRevisions
 from inbox.models.base import MailSyncBase
-
-
 from inbox.log import get_logger
 log = get_logger()
-
-from inbox.util.debug import profile, cprofile
 
 
 def _trim_filename(s, account_id, mid, max_len=64):
@@ -127,6 +123,8 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
     # In accordance with JWZ (http://www.jwz.org/doc/threading.html)
     references = Column(JSON, nullable=True)
 
+    parsed = Column(Boolean, server_default=false(), nullable=False)
+
     @validates('subject')
     def validate_length(self, key, value):
         if value is None:
@@ -139,7 +137,6 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
     def namespace(self):
         return self.thread.namespace
 
-    @cprofile
     def __init__(self, account=None, mid=None, folder_name=None,
                  received_date=None, flags=None, body_string=None,
                  *args, **kwargs):
@@ -283,7 +280,9 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
                 new_part.content_id = mimepart.headers.get('Content-Id')
                 new_part.data = data_to_write
                 self.parts.append(new_part)
-            self.calculate_sanitized_body()
+
+            self.sanitized_body = ''
+            self.snippet = ''
         except mime.DecodingError:
             # Occasionally iconv will fail via maximum recursion depth. We
             # still keep the metadata and mark it as b0rked.
@@ -320,23 +319,46 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
         if self.snippet is None:
             self.snippet = ''
 
-    #@profile
     def calculate_sanitized_body(self):
-        plain_part, html_part = self.body
-        # TODO: also strip signatures.
-        if html_part:
-            assert '\r' not in html_part, "newlines not normalized"
-            stripped = extract_from_html(
-                html_part.encode('utf-8')).decode('utf-8').strip()
-            self.sanitized_body = unicode(stripped)
-            self.calculate_html_snippet(self.sanitized_body)
-        elif plain_part:
-            stripped = extract_from_plain(plain_part).strip()
-            self.sanitized_body = plaintext2html(stripped, False)
-            self.calculate_plaintext_snippet(stripped)
-        else:
-            self.sanitized_body = u''
-            self.snippet = u''
+        self.parsed = True
+        try:
+            plain_part, html_part = self.body
+            # TODO: also strip signatures.
+            if html_part:
+                assert '\r' not in html_part, "newlines not normalized"
+                stripped = extract_from_html(
+                    html_part.encode('utf-8')).decode('utf-8').strip()
+                self.sanitized_body = unicode(stripped)
+                self.calculate_html_snippet(self.sanitized_body)
+            elif plain_part:
+                stripped = extract_from_plain(plain_part).strip()
+                self.sanitized_body = plaintext2html(stripped, False)
+                self.calculate_plaintext_snippet(stripped)
+            else:
+                self.sanitized_body = u''
+                self.snippet = u''
+
+        # TODO: Better logging incl. logging problem body_string,
+        # perhaps consolidate with error handling in __init__()?
+        except mime.DecodingError:
+            # Occasionally iconv will fail via maximum recursion depth. We
+            # still keep the metadata and mark it as b0rked.
+            log.error('Message parsing RuntimeError<iconv>, message_id: {0}'.
+                      format(self.id))
+            self.mark_error()
+            return
+        except AttributeError:
+            # For EAS messages that are missing Date + Received headers, due
+            # to the processing we do in inbox.util.misc.get_internaldate()
+            log.error('Message parsing AttributeError, message_id: {0}'.
+                      format(self.id))
+            self.mark_error()
+            return
+        except RuntimeError:
+            log.error('Message parsing RuntimeError<iconv>, message_id: {0}'.
+                      format(self.id))
+            self.mark_error()
+            return
 
     def calculate_html_snippet(self, text):
         text = text.replace('<br>', ' ').replace('<br/>', ' '). \
@@ -346,6 +368,11 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
 
     def calculate_plaintext_snippet(self, text):
         self.snippet = ' '.join(text.split())[:self.SNIPPET_LENGTH]
+
+    def get_sanitized_body(self):
+        if not self.parsed:
+            self.calculate_sanitized_body()
+        return self.sanitized_body
 
     @property
     def body(self):
@@ -376,7 +403,7 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
 
     @property
     def prettified_body(self):
-        html_data = self.sanitized_body
+        html_data = self.get_sanitized_body()
 
         prettified = None
         if 'font:' in html_data or 'font-face:' \
