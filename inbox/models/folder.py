@@ -49,32 +49,32 @@ class Folder(MailSyncBase):
         return self.account.namespace
 
     @classmethod
-    def create(cls, account, name, session, canonical_name=None):
+    def create(cls, account_id, name, session, canonical_name=None):
         if name is not None and len(name) > MAX_FOLDER_NAME_LENGTH:
             log.warning("Truncating long folder name for account {}; "
-                        "original name was '{}'" .format(account.id, name))
+                        "original name was '{}'" .format(account_id, name))
             name = name[:MAX_FOLDER_NAME_LENGTH]
-        obj = cls(account=account, name=name,
+        obj = cls(account_id=account_id, name=name,
                   canonical_name=canonical_name)
         session.add(obj)
         return obj
 
     @classmethod
-    def find_or_create(cls, session, account, name, canonical_name=None):
+    def find_or_create(cls, session, account_id, name, canonical_name=None):
         try:
             if name is not None and len(name) > MAX_FOLDER_NAME_LENGTH:
                 name = name[:MAX_FOLDER_NAME_LENGTH]
-            q = session.query(cls).filter_by(account_id=account.id)
+            q = session.query(cls).filter_by(account_id=account_id)
             if name is not None:
                 q = q.filter(func.lower(Folder.name) == func.lower(name))
             if canonical_name is not None:
                 q = q.filter_by(canonical_name=canonical_name)
             obj = q.one()
         except NoResultFound:
-            obj = cls.create(account, name, session, canonical_name)
+            obj = cls.create(account_id, name, session, canonical_name)
         except MultipleResultsFound:
             log.info("Duplicate folder rows for folder {} for account {}"
-                     .format(name, account.id))
+                     .format(name, account_id))
             raise
         return obj
 

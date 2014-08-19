@@ -1,4 +1,4 @@
-from gc import collect as garbage_collect
+from contextlib import contextmanager
 
 from gevent import Greenlet, joinall, sleep, GreenletExit
 from gevent.queue import Queue, Empty
@@ -6,9 +6,10 @@ from sqlalchemy.exc import DataError, IntegrityError
 
 from inbox.log import get_logger
 logger = get_logger()
-from inbox.util.concurrency import retry_with_logging, retry_and_report_killed
+from inbox.util.concurrency import retry_and_report_killed
 from inbox.util.itert import partition
-from inbox.models import (Account, Folder, MAX_FOLDER_NAME_LENGTH)
+from inbox.models.session import session_scope
+from inbox.models import Account, Folder, MAX_FOLDER_NAME_LENGTH
 from inbox.mailsync.exc import SyncException
 from inbox.mailsync.reporting import report_stopped
 
@@ -19,6 +20,13 @@ class MailsyncError(Exception):
 
 class MailsyncDone(GreenletExit):
     pass
+
+
+@contextmanager
+def mailsync_session_scope(namespace):
+    with session_scope(ignore_soft_deletes=False,
+                       namespace=namespace) as db_session:
+        yield db_session
 
 
 def verify_folder_name(account_id, old, new):
@@ -118,24 +126,30 @@ def create_db_objects(account_id, db_session, log, folder_name, raw_messages,
     new_uids = []
     # TODO: Detect which namespace to add message to. (shared folders)
     # Look up message thread,
-    acc = db_session.query(Account).get(account_id)
+    if hasattr(db_session, 'namespace'):
+        namespace = db_session.namespace
+    else:
+        namespace = db_session.query(Account).get(account_id).namespace
 
-    folder = Folder.find_or_create(db_session, acc, folder_name,
+    folder = Folder.find_or_create(db_session, account_id, folder_name,
                                    canonical_name)
 
     for msg in raw_messages:
-        uid = msg_create_fn(db_session, log, acc, folder, msg)
+        uid = msg_create_fn(namespace, db_session, log, folder, msg)
         # Must ensure message objects are flushed because they reference
         # threads, which may be new, and later messages may need to belong to
         # the same thread. If we don't flush here and disable autoflush within
         # the message creation to avoid flushing incomplete messages, we can't
-        # query for the (uncommitted) new thread id.
+        # query for the (uncommitted) new thread id. However, the flush step
+        # takes some time, so we skip it if there's at most one message to
+        # commit.
         #
         # We should probably refactor this later to use provider-specific
         # Message constructors to avoid creating incomplete objects in the
         # first place.
         db_session.add(uid)
-        db_session.flush()
+        if len(raw_messages) > 1:
+            db_session.flush()
         if uid is not None:
             new_uids.append(uid)
 

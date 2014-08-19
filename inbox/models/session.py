@@ -2,6 +2,7 @@ import sys
 import time
 from contextlib import contextmanager
 
+from sqlalchemy.orm.attributes import instance_state
 from sqlalchemy.orm.session import Session
 from sqlalchemy.orm.interfaces import MapperOption
 from sqlalchemy.orm.exc import NoResultFound
@@ -79,12 +80,9 @@ class InboxSession(object):
         Do you want to enable the transaction log?
     ignore_soft_deletes : bool
         Whether or not to ignore soft-deleted objects in query results.
-    namespace_id : int
-        Namespace to limit query results with.
     """
     def __init__(self, engine, versioned=True, ignore_soft_deletes=True,
-                 namespace_id=None):
-        # TODO: support limiting on namespaces
+                 namespace=None):
         assert engine, "Must set the database engine"
 
         args = dict(bind=engine, autoflush=True, autocommit=False)
@@ -99,6 +97,11 @@ class InboxSession(object):
                 sqlalchemy_session, Transaction, HasRevisions)
         else:
             self._session = sqlalchemy_session
+
+        self.bound_context = {}
+        if namespace is not None:
+            assert instance_state(namespace).detached
+            self.namespace = self._session.merge(namespace, load=False)
 
     def query(self, *args, **kwargs):
         q = self._session.query(*args, **kwargs)
@@ -155,7 +158,7 @@ cached_engine = None
 
 
 @contextmanager
-def session_scope(versioned=True, ignore_soft_deletes=True, namespace_id=None):
+def session_scope(versioned=True, ignore_soft_deletes=True, namespace=None):
     """ Provide a transactional scope around a series of operations.
 
     Takes care of rolling back failed transactions and closing the session
@@ -172,8 +175,11 @@ def session_scope(versioned=True, ignore_soft_deletes=True, namespace_id=None):
         Do you want to enable the transaction log?
     ignore_soft_deletes : bool
         Whether or not to ignore soft-deleted objects in query results.
-    namespace_id : int
-        Namespace to limit query results with.
+    namespace : inbox.models.Namespace, optional
+        If you pass a *detached* Namespace instance, it will be merged and
+        bound as db_session.namespace. This can be used to eliminate
+        unnecessary database access to get the same namespace repeatedly, but
+        should be used with caution.
 
     Yields
     ------
@@ -190,7 +196,7 @@ def session_scope(versioned=True, ignore_soft_deletes=True, namespace_id=None):
     session = InboxSession(cached_engine,
                            versioned=versioned,
                            ignore_soft_deletes=ignore_soft_deletes,
-                           namespace_id=namespace_id)
+                           namespace=namespace)
     try:
         if config.get('LOG_DB_SESSIONS'):
             start_time = time.time()

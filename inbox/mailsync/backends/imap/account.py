@@ -15,6 +15,7 @@ from sqlalchemy.orm.exc import NoResultFound
 
 from inbox.contacts.process_mail import update_contacts_from_message
 from inbox.models.block import Block
+from inbox.models.account import Account
 from inbox.models.message import Message
 from inbox.models.thread import Thread
 from inbox.models.folder import Folder
@@ -136,12 +137,15 @@ def update_thread_labels(thread, folder_name, g_labels, db_session):
                 if folder:
                     thread.folders.add(folder)
                 else:
+                    # STOPSHIP(emfree): just pass an account_id into the
+                    # function.
                     folder = Folder.find_or_create(
-                        db_session, thread.namespace.account, None, label)
+                        db_session, thread.namespace.account.id, None, label)
                     thread.folders.add(folder)
             else:
                 folder = Folder.find_or_create(db_session,
-                                               thread.namespace.account, label)
+                                               thread.namespace.account.id,
+                                               label)
                 thread.folders.add(folder)
     return new_labels
 
@@ -228,13 +232,8 @@ def update_folder_info(account_id, session, folder_name, uidvalidity,
     session.add(cached_folder_info)
 
 
-def create_imap_message(db_session, log, account, folder, msg):
+def create_imap_message(namespace, db_session, log, folder, msg):
     """ IMAP-specific message creation logic.
-
-    This is the one function in this file that gets to take an account
-    object instead of an account_id, because we need to relate the
-    account to ImapUids for versioning to work, since it needs to look
-    up the namespace.
 
     Returns
     -------
@@ -242,18 +241,19 @@ def create_imap_message(db_session, log, account, folder, msg):
         New db object, which links to new Message and Block objects through
         relationships. All new objects are uncommitted.
     """
-    new_msg = Message(account=account, mid=msg.uid, folder_name=folder.name,
-                      received_date=msg.internaldate, flags=msg.flags,
-                      body_string=msg.body)
+    new_msg = Message(namespace=namespace, mid=msg.uid,
+                      folder_name=folder.name, received_date=msg.internaldate,
+                      flags=msg.flags, body_string=msg.body)
 
-    imapuid = ImapUid(account=account, folder=folder, msg_uid=msg.uid,
-                      message=new_msg)
+    # STOPSHIP(emfree): figure out how best to wrangle the account here
+    imapuid = ImapUid(account=namespace.account, folder=folder,
+                      msg_uid=msg.uid, message=new_msg)
     imapuid.update_imap_flags(msg.flags, msg.g_labels)
 
     new_msg.is_draft = imapuid.is_draft
     new_msg.is_read = imapuid.is_seen
 
-    update_contacts_from_message(db_session, new_msg, account.id)
+    update_contacts_from_message(db_session, new_msg, namespace.account_id)
 
     # NOTE: This might be a good place to add FolderItem entries for
     # non-Gmail backends.

@@ -137,7 +137,7 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
     def namespace(self):
         return self.thread.namespace
 
-    def __init__(self, account=None, mid=None, folder_name=None,
+    def __init__(self, namespace=None, mid=None, folder_name=None,
                  received_date=None, flags=None, body_string=None,
                  *args, **kwargs):
         """ Parses message data and writes out db metadata and MIME blocks.
@@ -156,7 +156,7 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
         raw_message : str
             The full message including headers (encoded).
         """
-        _rqd = [account, mid, folder_name, flags, body_string]
+        _rqd = [namespace, mid, folder_name, flags, body_string]
 
         MailSyncBase.__init__(self, *args, **kwargs)
 
@@ -170,8 +170,9 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
                 "flags, body_string")
 
         # stop trickle-down bugs
-        assert account.namespace is not None
+        assert namespace is not None
         assert not isinstance(body_string, unicode)
+        account_id = namespace.account_id
 
         try:
             parsed = mime.from_string(body_string)
@@ -180,7 +181,7 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
             # sometimes MIME-Version is "1.0 (1.0)", hence the .startswith()
             if mime_version is not None and not mime_version.startswith('1.0'):
                 log.warning('Unexpected MIME-Version',
-                            account_id=account.id, folder_name=folder_name,
+                            account_id=account_id, folder_name=folder_name,
                             mid=mid, mime_version=mime_version)
 
             self.data_sha256 = sha256(body_string).hexdigest()
@@ -224,7 +225,7 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
 
             # Store all message headers as object with index 0
             headers_part = Part()
-            headers_part.namespace_id = account.namespace.id
+            headers_part.namespace_id = namespace.id
             headers_part.message = self
             headers_part.walk_index = i
             headers_part.data = json.dumps(parsed.headers.items())
@@ -235,25 +236,25 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
                 i += 1
                 if mimepart.content_type.is_multipart():
                     log.warning('multipart sub-part found',
-                                account_id=account.id, folder_name=folder_name,
+                                account_id=account_id, folder_name=folder_name,
                                 mid=mid)
                     continue  # TODO should we store relations?
 
                 new_part = Part()
-                new_part.namespace_id = account.namespace.id
+                new_part.namespace_id = namespace.id
                 new_part.message = self
                 new_part.walk_index = i
                 new_part.content_type = mimepart.content_type.value
                 new_part.filename = _trim_filename(
                     mimepart.content_type.params.get('name'),
-                    account.id, mid)
+                    account_id, mid)
                 # TODO maybe also trim other headers?
 
                 if mimepart.content_disposition[0] is not None:
                     value, params = mimepart.content_disposition
                     if value not in ['inline', 'attachment']:
                         log.error('Unknown Content-Disposition',
-                                  account_id=account.id, mid=mid,
+                                  account_id=account_id, mid=mid,
                                   folder_name=folder_name,
                                   bad_content_disposition=
                                   mimepart.content_disposition,
@@ -263,7 +264,7 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
                         new_part.content_disposition = value
                         if value == 'attachment':
                             new_part.filename = _trim_filename(
-                                params.get('filename'), account.id, mid)
+                                params.get('filename'), account_id, mid)
 
                 if mimepart.body is None:
                     data_to_write = ''
@@ -284,25 +285,25 @@ class Message(MailSyncBase, HasRevisions, HasPublicID):
         except mime.DecodingError:
             # Occasionally iconv will fail via maximum recursion depth. We
             # still keep the metadata and mark it as b0rked.
-            _log_decode_error(account.id, folder_name, mid, body_string)
-            log.error('Message parsing DecodeError', account_id=account.id,
+            _log_decode_error(account_id, folder_name, mid, body_string)
+            log.error('Message parsing DecodeError', account_id=account_id,
                       folder_name=folder_name, err_filename=_get_errfilename(
-                          account.id, folder_name, mid))
+                          account_id, folder_name, mid))
             self.mark_error()
             return
         except AttributeError:
             # For EAS messages that are missing Date + Received headers, due
             # to the processing we do in inbox.util.misc.get_internaldate()
-            _log_decode_error(account.id, folder_name, mid, body_string)
-            log.error('Message parsing AttributeError', account_id=account.id,
+            _log_decode_error(account_id, folder_name, mid, body_string)
+            log.error('Message parsing AttributeError', account_id=account_id,
                       folder_name=folder_name, err_filename=_get_errfilename(
-                          account.id, folder_name, mid))
+                          account_id, folder_name, mid))
             self.mark_error()
             return
         except RuntimeError:
-            _log_decode_error(account.id, folder_name, mid, body_string)
+            _log_decode_error(account_id, folder_name, mid, body_string)
             log.error('Message parsing RuntimeError<iconv>'.format(
-                err_filename=_get_errfilename(account.id, folder_name, mid)))
+                err_filename=_get_errfilename(account_id, folder_name, mid)))
             self.mark_error()
             return
 
