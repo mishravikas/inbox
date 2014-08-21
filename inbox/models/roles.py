@@ -1,4 +1,5 @@
 import os
+import gevent.local
 from hashlib import sha256
 
 from sqlalchemy import Column, Integer, String
@@ -18,6 +19,33 @@ STORE_MSG_ON_S3 = config.get('STORE_MESSAGES_ON_S3', None)
 if STORE_MSG_ON_S3:
     from boto.s3.connection import S3Connection
     from boto.s3.key import Key
+
+    assert 'AWS_ACCESS_KEY_ID' in config, "Need AWS key!"
+    assert 'AWS_SECRET_ACCESS_KEY' in config, "Need AWS secret!"
+    assert 'MESSAGE_STORE_BUCKET_NAME' in config, \
+        "Need bucket name to store message data!"
+
+    class CachedS3Connection(gevent.local.local):
+        @property
+        def connection(self):
+            if not hasattr(self, '_connection'):
+                self._connection = S3Connection(
+                    config.get('AWS_ACCESS_KEY_ID'),
+                    config.get('AWS_SECRET_ACCESS_KEY'))
+            return self._connection
+
+        @property
+        def bucket(self):
+            if not hasattr(self, '_bucket'):
+                self._bucket = self.connection.get_bucket(
+                    config.get('MESSAGE_STORE_BUCKET_NAME'))
+            return self._bucket
+
+    # STOPSHIP(emfree): figure out how to refresh this if the connection gets
+    # closed. Also, how to keep the connection around for a while, but close if
+    # it goes unused for a really long time.
+    local_s3_connection = CachedS3Connection()
+
 
 from inbox.util.file import mkdirp, remove_file
 
@@ -86,24 +114,17 @@ class Blob(object):
     def _save_to_s3(self, data):
         assert len(data) > 0, "Need data to save!"
         # TODO: store AWS credentials in a better way.
-        assert 'AWS_ACCESS_KEY_ID' in config, "Need AWS key!"
-        assert 'AWS_SECRET_ACCESS_KEY' in config, "Need AWS secret!"
-        assert 'MESSAGE_STORE_BUCKET_NAME' in config, \
-            "Need bucket name to store message data!"
-        # Boto pools connections at the class level
-        conn = S3Connection(config.get('AWS_ACCESS_KEY_ID'),
-                            config.get('AWS_SECRET_ACCESS_KEY'))
-        bucket = conn.get_bucket(config.get('MESSAGE_STORE_BUCKET_NAME'))
 
         # See if it alreays exists and has the same hash
-        data_obj = bucket.get_key(self.data_sha256)
+        conn = local_s3_connection
+        data_obj = conn.bucket.get_key(self.data_sha256)
         if data_obj:
             assert data_obj.get_metadata('data_sha256') == self.data_sha256, \
                 "Block hash doesn't match what we previously stored on s3!"
             # log.info("Block already exists on S3.")
             return
 
-        data_obj = Key(bucket)
+        data_obj = Key(conn.bucket)
         # if metadata:
         #     assert type(metadata) is dict
         #     for k, v in metadata.iteritems():
@@ -120,10 +141,8 @@ class Blob(object):
     def _get_from_s3(self):
         assert self.data_sha256, "Can't get data with no hash!"
         # Boto pools connections at the class level
-        conn = S3Connection(config.get('AWS_ACCESS_KEY_ID'),
-                            config.get('AWS_SECRET_ACCESS_KEY'))
-        bucket = conn.get_bucket(config.get('MESSAGE_STORE_BUCKET_NAME'))
-        data_obj = bucket.get_key(self.data_sha256)
+        conn = local_s3_connection
+        data_obj = conn.bucket.get_key(self.data_sha256)
         assert data_obj, "No data returned!"
         return data_obj.get_contents_as_string()
 

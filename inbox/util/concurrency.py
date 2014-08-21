@@ -3,6 +3,7 @@ import time
 import functools
 
 import gevent
+import gevent.local
 import zerorpc
 
 from inbox.log import get_logger, log_uncaught_errors
