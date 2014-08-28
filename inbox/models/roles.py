@@ -4,6 +4,7 @@ from hashlib import sha256
 from sqlalchemy import Column, Integer, String
 
 from inbox.config import config
+from inbox.util.s3 import get_s3_pool
 from inbox.log import get_logger
 log = get_logger()
 
@@ -85,37 +86,8 @@ class Blob(object):
 
     def _save_to_s3(self, data):
         assert len(data) > 0, "Need data to save!"
-        # TODO: store AWS credentials in a better way.
-        assert 'AWS_ACCESS_KEY_ID' in config, "Need AWS key!"
-        assert 'AWS_SECRET_ACCESS_KEY' in config, "Need AWS secret!"
-        assert 'MESSAGE_STORE_BUCKET_NAME' in config, \
-            "Need bucket name to store message data!"
-        # Boto pools connections at the class level
-        conn = S3Connection(config.get('AWS_ACCESS_KEY_ID'),
-                            config.get('AWS_SECRET_ACCESS_KEY'))
-        bucket = conn.get_bucket(config.get('MESSAGE_STORE_BUCKET_NAME'))
-
-        # See if it alreays exists and has the same hash
-        data_obj = bucket.get_key(self.data_sha256)
-        if data_obj:
-            assert data_obj.get_metadata('data_sha256') == self.data_sha256, \
-                "Block hash doesn't match what we previously stored on s3!"
-            # log.info("Block already exists on S3.")
-            return
-
-        data_obj = Key(bucket)
-        # if metadata:
-        #     assert type(metadata) is dict
-        #     for k, v in metadata.iteritems():
-        #         data_obj.set_metadata(k, v)
-        data_obj.set_metadata('data_sha256', self.data_sha256)
-        # data_obj.content_type = self.content_type  # Experimental
-        data_obj.key = self.data_sha256
-        # log.info("Writing data to S3 with hash {0}".format(self.data_sha256))
-        # def progress(done, total):
-        #     log.info("%.2f%% done" % (done/total * 100) )
-        # data_obj.set_contents_from_string(data, cb=progress)
-        data_obj.set_contents_from_string(data)
+        s3_pool = get_s3_pool()
+        s3_pool.save(data, self.data_sha256)
 
     def _get_from_s3(self):
         assert self.data_sha256, "Can't get data with no hash!"
